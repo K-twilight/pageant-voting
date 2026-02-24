@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pageant Voting 2026</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <script type="module">
+    // ================== PASTE YOUR FIREBASE CONFIG HERE ==================
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY_HERE",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:xxxxxxxxxxxx"
+    };
+    // =====================================================================
+
+    // Firebase imports (v12.9.0 - latest Feb 2026)
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, serverTimestamp, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // Your contestants - EDIT THIS LIST!
+    const candidates = {
+      mr: [
+        "John Reyes - Team Red",
+        "Miguel Santos - Team Blue",
+        "Ethan Cruz - Team Gold",
+        "Liam Garcia - Team Silver"
+      ],
+      ms: [
+        "Sophia Dela Cruz - Team Red",
+        "Isabella Lopez - Team Blue",
+        "Olivia Morales - Team Gold",
+        "Emma Bautista - Team Silver"
+      ]
+    };
+
+    // Tailwind script
+    function initTailwind() {
+      tailwind.config = { content: ["*"] };
+    }
+
+    let currentUser = null;
+
+    async function hasVotedToday(category) {
+      if (!currentUser) return true;
+      const today = new Date().toISOString().split('T')[0];
+      const voteId = `${currentUser.uid}_${category}_${today}`;
+      const voteRef = doc(db, "votes", voteId);
+      const snap = await getDoc(voteRef);
+      return snap.exists();
+    }
+
+    async function castVote(category, index) {
+      const today = new Date().toISOString().split('T')[0];
+      const voteId = `${currentUser.uid}_${category}_${today}`;
+      const voteRef = doc(db, "votes", voteId);
+
+      try {
+        await setDoc(voteRef, {
+          email: currentUser.email,
+          category: category,
+          candidateIndex: index,
+          name: candidates[category][index],
+          timestamp: serverTimestamp()
+        });
+        alert(`✅ Thank you! Your vote for ${category.toUpperCase()} has been recorded.\n\nYou can vote again tomorrow.`);
+        location.reload(); // simple refresh
+      } catch (e) {
+        alert("Error: " + e.message);
+      }
+    }
+
+    async function loadResults() {
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = `<p class="text-center text-gray-500">Loading live results...</p>`;
+
+      const snapshot = await getDocs(collection(db, "votes"));
+      let mrVotes = new Array(candidates.mr.length).fill(0);
+      let msVotes = new Array(candidates.ms.length).fill(0);
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.category === "mr") mrVotes[data.candidateIndex]++;
+        if (data.category === "ms") msVotes[data.candidateIndex]++;
+      });
+
+      let html = `<h2 class="text-2xl font-bold text-center mb-6 text-purple-700">LIVE RESULTS</h2>`;
+
+      html += `<h3 class="text-xl font-semibold mb-3 text-rose-600">👑 Mr. Candidates</h3><div class="space-y-3">`;
+      candidates.mr.forEach((name, i) => {
+        html += `<div class="flex justify-between bg-white p-4 rounded-xl shadow"><span>${name}</span><span class="font-bold text-rose-600">${mrVotes[i]} votes</span></div>`;
+      });
+      html += `</div>`;
+
+      html += `<h3 class="text-xl font-semibold mt-8 mb-3 text-violet-600">👑 Ms. Candidates</h3><div class="space-y-3">`;
+      candidates.ms.forEach((name, i) => {
+        html += `<div class="flex justify-between bg-white p-4 rounded-xl shadow"><span>${name}</span><span class="font-bold text-violet-600">${msVotes[i]} votes</span></div>`;
+      });
+      html += `</div>`;
+
+      resultsDiv.innerHTML = html;
+    }
+
+    // Main UI
+    onAuthStateChanged(auth, async (user) => {
+      currentUser = user;
+      const loginBox = document.getElementById('login-box');
+      const votingBox = document.getElementById('voting-box');
+
+      if (user) {
+        loginBox.classList.add('hidden');
+        votingBox.classList.remove('hidden');
+        document.getElementById('user-email').textContent = user.email;
+
+        // Check votes
+        const votedMr = await hasVotedToday('mr');
+        const votedMs = await hasVotedToday('ms');
+
+        if (votedMr) {
+          document.querySelectorAll('.mr-btn').forEach(btn => {
+            btn.disabled = true;
+            btn.innerHTML = '✅ Voted today';
+          });
+        }
+        if (votedMs) {
+          document.querySelectorAll('.ms-btn').forEach(btn => {
+            btn.disabled = true;
+            btn.innerHTML = '✅ Voted today';
+          });
+        }
+
+        loadResults();
+      } else {
+        loginBox.classList.remove('hidden');
+        votingBox.classList.add('hidden');
+      }
+    });
+
+    // Login button
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (e) {
+        alert("Login cancelled or failed.");
+      }
+    });
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+    // Render candidates
+    function renderCandidates() {
+      const mrList = document.getElementById('mr-list');
+      const msList = document.getElementById('ms-list');
+
+      mrList.innerHTML = candidates.mr.map((name, i) => `
+        <div class="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition">
+          <h3 class="font-semibold text-lg mb-4">${name}</h3>
+          <button class="mr-btn w-full bg-rose-600 hover:bg-rose-700 text-white font-medium py-3 rounded-xl transition" data-index="${i}">
+            Vote for Mr.
+          </button>
+        </div>
+      `).join('');
+
+      msList.innerHTML = candidates.ms.map((name, i) => `
+        <div class="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition">
+          <h3 class="font-semibold text-lg mb-4">${name}</h3>
+          <button class="ms-btn w-full bg-violet-600 hover:bg-violet-700 text-white font-medium py-3 rounded-xl transition" data-index="${i}">
+            Vote for Ms.
+          </button>
+        </div>
+      `).join('');
+    }
+
+    // Vote buttons
+    document.addEventListener('click', async (e) => {
+      if (e.target.classList.contains('mr-btn') || e.target.classList.contains('ms-btn')) {
+        const category = e.target.classList.contains('mr-btn') ? 'mr' : 'ms';
+        const index = parseInt(e.target.dataset.index);
+        await castVote(category, index);
+      }
+    });
+
+    // Initialize
+    window.onload = () => {
+      initTailwind();
+      renderCandidates();
+      loadResults(); // initial results even before login
+    };
+  </script>
+  <style>
+    body { background: linear-gradient(135deg, #f3e7e9, #e6d9f0); }
+  </style>
+</head>
+<body class="min-h-screen font-sans">
+  <div class="max-w-4xl mx-auto py-12 px-6">
+    <div class="text-center mb-12">
+      <h1 class="text-5xl font-bold text-purple-800 mb-2">Pageant Voting 2026</h1>
+      <p class="text-xl text-purple-600">One vote per Gmail • Resets every day</p>
+    </div>
+
+    <!-- Login Box -->
+    <div id="login-box" class="bg-white rounded-3xl shadow-2xl p-10 text-center max-w-md mx-auto">
+      <i class="fa-solid fa-crown text-6xl text-yellow-500 mb-6"></i>
+      <h2 class="text-3xl font-semibold mb-6">Welcome to the Pageant!</h2>
+      <button id="loginBtn" 
+              class="bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-50 w-full py-4 rounded-2xl font-medium text-lg flex items-center justify-center gap-3 shadow-md">
+        <i class="fa-brands fa-google"></i>
+        Sign in with Google
+      </button>
+      <p class="text-sm text-gray-500 mt-6">Only Gmail accounts allowed • One vote per day</p>
+    </div>
+
+    <!-- Voting Area -->
+    <div id="voting-box" class="hidden">
+      <div class="flex justify-between items-center mb-8 bg-white rounded-3xl p-6 shadow">
+        <div>
+          <p class="text-gray-600">Signed in as</p>
+          <p id="user-email" class="font-medium text-lg"></p>
+        </div>
+        <button id="logoutBtn" class="text-red-600 hover:text-red-700 font-medium flex items-center gap-2">
+          <i class="fa-solid fa-right-from-bracket"></i> Logout
+        </button>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-8">
+        <!-- Mr -->
+        <div>
+          <h2 class="text-3xl font-bold text-rose-600 mb-6 flex items-center gap-3">
+            <span>👑 Mr. Candidates</span>
+          </h2>
+          <div id="mr-list" class="space-y-6"></div>
+        </div>
+
+        <!-- Ms -->
+        <div>
+          <h2 class="text-3xl font-bold text-violet-600 mb-6 flex items-center gap-3">
+            <span>👑 Ms. Candidates</span>
+          </h2>
+          <div id="ms-list" class="space-y-6"></div>
+        </div>
+      </div>
+
+      <div id="results" class="mt-16 bg-white rounded-3xl shadow-xl p-8"></div>
+    </div>
+  </div>
+</body>
+</html>
